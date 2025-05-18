@@ -1,0 +1,194 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import json
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
+
+# Load the dataset
+df = pd.read_csv('tmdb_5000_movies.csv')
+
+# Display the first few rows to understand the structure
+df.head()
+
+# Selecting the first movie's details
+x = df.iloc[0]
+x
+
+# Extract genres
+x['genres']
+
+# Extract keywords
+x['keywords']
+
+# Convert JSON-formatted genre information to a Python dictionary
+j = json.loads(x['genres'])
+j
+
+# Convert genres to a single string
+' '.join(''.join(jj['name'].split()) for jj in j)
+
+# convert the relevant data for each movie into a single string
+# to be ingested by TfidfVectorizer
+def genres_and_keywords_to_string(row):
+  genres = json.loads(row['genres'])
+  genres = ' '.join(''.join(j['name'].split()) for j in genres)
+
+  keywords = json.loads(row['keywords'])
+  keywords = ' '.join(''.join(j['name'].split()) for j in keywords)
+  return "%s %s" % (genres, keywords)
+
+# Apply transformation to create a new column with combined genre and keyword strings
+df['string'] = df.apply(genres_and_keywords_to_string, axis=1)
+
+# Initialize a TF-IDF vectorizer (limiting to 2000 features)
+tfidf = TfidfVectorizer(max_features=2000)
+
+# Transform the text data into a numerical representation
+X = tfidf.fit_transform(df['string'])
+
+X
+
+# generate a mapping from movie title -> index (in df)
+movie2idx = pd.Series(df.index, index=df['title'])
+movie2idx
+
+# Retrieve the index of a specific movie
+idx = movie2idx['Scream 3']
+idx
+
+# Extract the TF-IDF vector for the selected movie
+query = X[idx]
+query
+
+# print the query vector
+query.toarray()
+
+# compute similarity between query and every vector in X
+scores = cosine_similarity(query, X)
+scores
+
+# currently the array is 1 x N, make it just a 1-D array
+scores = scores.flatten()
+
+plt.plot(scores);
+
+# Sort and retrieve indices based on similarity (-scores for descending order)
+(-scores).argsort()
+
+# Plot sorted similarity scores
+plt.plot(scores[(-scores).argsort()]);
+
+# get top 5 matches
+# exclude self (similarity between query and itself yields max score)
+recommended_idx = (-scores).argsort()[1:6]
+
+# convert indices back to titles
+df['title'].iloc[recommended_idx]
+
+# create a function that generates recommendations
+def recommend(title):
+  # get the row in the dataframe for this movie
+  idx = movie2idx[title]
+  if type(idx) == pd.Series:
+    idx = idx.iloc[0]
+
+  # calculate the pairwise similarities for this movie
+  query = X[idx]
+  scores = cosine_similarity(query, X)
+
+  # currently the array is 1 x N, make it just a 1-D array
+  scores = scores.flatten()
+
+  # get the indexes of the highest scoring movies
+  # get the first K recommendations
+  # don't return itself!
+  recommended_idx = (-scores).argsort()[1:6]
+
+  # return the titles of the recommendations
+  return df['title'].iloc[recommended_idx]
+
+print("Recommendations for 'Scream 3':")
+print(recommend('Scream 3'))
+
+print("Recommendations for 'Mortal Kombat':")
+print(recommend('Mortal Kombat'))
+
+print("Recommendations for 'Runaway Bride':")
+print(recommend('Runaway Bride'))
+
+"""
+
+---
+
+Enhancements
+
+---
+
+"""
+
+# Function to allow dynamic number of recommendations
+def recommend_dynamic(title, top_n=5):
+    if title not in movie2idx:
+        return f"Movie '{title}' not found in dataset."
+
+    idx = movie2idx[title]
+    if isinstance(idx, pd.Series):
+        idx = idx.iloc[0]
+
+    query = X[idx]
+    scores = cosine_similarity(query, X).flatten()
+
+    recommended_idx = (-scores).argsort()[1:top_n+1]
+
+    return df['title'].iloc[recommended_idx]
+
+# Function to recommend using Euclidean distance
+def recommend_using_euclidean(title, top_n=5):
+    if title not in movie2idx:
+        return f"Movie '{title}' not found in dataset."
+
+    idx = movie2idx[title]
+    if isinstance(idx, pd.Series):
+        idx = idx.iloc[0]
+
+    query = X[idx]
+    scores = euclidean_distances(query, X).flatten()
+
+    recommended_idx = scores.argsort()[1:top_n+1]
+
+    return df['title'].iloc[recommended_idx]
+
+# Function to cache TF-IDF matrix for performance optimization
+from scipy.sparse import save_npz, load_npz
+import os
+
+if not os.path.exists('tfidf_matrix.npz'):
+    save_npz('tfidf_matrix.npz', X)
+else:
+    X = load_npz('tfidf_matrix.npz')
+
+# Function to show similarity scores with recommendations
+def recommend_with_scores(title, top_n=5):
+    if title not in movie2idx:
+        return f"Movie '{title}' not found in dataset."
+
+    idx = movie2idx[title]
+    if isinstance(idx, pd.Series):
+        idx = idx.iloc[0]
+
+    query = X[idx]
+    scores = cosine_similarity(query, X).flatten()
+
+    recommended_idx = (-scores).argsort()[1:top_n+1]
+    recommended_movies = df['title'].iloc[recommended_idx]
+    similarity_scores = scores[recommended_idx]
+
+    return list(zip(recommended_movies, similarity_scores))
+
+# Example usage
+print(recommend_dynamic('Scream 3', top_n=10))
+print("------------------------------------------")
+print(recommend_using_euclidean('Scream 3'))
+print("------------------------------------------")
+print(recommend_with_scores('Scream 3'))
