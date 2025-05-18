@@ -1,0 +1,138 @@
+import numpy as np
+import string
+
+# Set random seed for reproducibility
+np.random.seed(1234)
+
+# Dictionaries to store different order word transitions
+initial = {}  # Stores the frequency of the first word of a line
+first_order = {}  # Stores bigram (2-word) transitions
+second_order = {}  # Stores trigram (3-word) transitions
+third_order = {}  # Stores 4-gram transitions
+fourth_order = {}  # Enhancement: Capture 5-word transitions
+
+# Function to remove punctuation from text
+def remove_punctuation(s):
+    return s.translate(str.maketrans('', '', string.punctuation))
+
+# Example usage
+remove_punctuation('shraddha-g-pai')
+
+# Function to add values to a dictionary of lists
+def add2dict(d, k, v):
+  if k not in d:
+    d[k] = []
+  d[k].append(v)
+
+# Read the dataset and populate frequency dictionaries
+for line in open('robert_frost.txt'):
+  tokens = remove_punctuation(line.rstrip().lower()).split()
+
+  T = len(tokens)
+  for i in range(T):
+    t = tokens[i]
+    if i == 0:
+      # Track initial word frequencies
+      initial[t] = initial.get(t, 0.) + 1
+    else:
+      t_1 = tokens[i-1]
+      if i == T - 1:
+        # Track probability of ending a line
+        add2dict(second_order, (t_1, t), 'END')
+      if i == 1:
+        # Store bigram transitions
+        add2dict(first_order, t_1, t)
+      else:
+        t_2 = tokens[i-2]
+        add2dict(second_order, (t_2, t_1), t)
+
+      # Enhancement: Capture 4-gram and 5-gram transitions
+      if i >= 2:
+        t_3 = tokens[i-3] if i >= 3 else "<START>"
+        add2dict(third_order, (t_3, t_2, t_1), t)
+      if i >= 3:
+        t_4 = tokens[i-4] if i >= 4 else "<START>"
+        add2dict(fourth_order, (t_4, t_3, t_2, t_1), t)
+
+# Normalize initial word frequencies
+initial_total = sum(initial.values())
+for t, c in initial.items():
+    initial[t] = c / initial_total
+
+# convert [cat, cat, cat, dog, dog, dog, dog, mouse, ...]
+# into {cat: 0.5, dog: 0.4, mouse: 0.1}
+
+# Convert list of occurrences into probability dictionary
+def list2pdict(ts):
+  d = {}
+  n = len(ts)
+  for t in ts:
+    d[t] = d.get(t, 0.) + 1
+  for t, c in d.items():
+    d[t] = c / n
+  return d
+
+for t_1, ts in first_order.items():
+  # replace list with dictionary of probabilities
+  first_order[t_1] = list2pdict(ts)
+
+for k, ts in second_order.items():
+  second_order[k] = list2pdict(ts)
+
+#enhancement for 3rd and 4th order
+
+for k, ts in third_order.items():
+  third_order[k] = list2pdict(ts)
+
+for k, ts in fourth_order.items():
+  fourth_order[k] = list2pdict(ts)  # Enhancement
+
+# Function to sample a word based on probabilities
+def sample_word(d):
+  p0 = np.random.random()
+  cumulative = 0
+  for t, p in d.items():
+    cumulative += p
+    if p0 < cumulative:
+      return t
+  return "<UNK>"  # Enhancement: Handling OOV words
+
+# Function to generate poetry
+def generate(n_lines=4):  # Enhancement: Dynamic line count
+  for i in range(n_lines):
+    sentence = []
+
+    # Sample the first word
+    w0 = sample_word(initial)
+    sentence.append(w0)
+
+    # Sample second word
+    if w0 in first_order:
+        w1 = sample_word(first_order[w0])
+        sentence.append(w1)
+    else:
+        print("OOV encountered in first-order model")
+        continue
+
+    # Sample words using trigram, 4-gram, or 5-gram transitions
+    while True:
+      key = (w0, w1)
+      if key in second_order:
+        w2 = sample_word(second_order[key])
+      elif key in third_order:
+        w2 = sample_word(third_order[key])
+      elif key in fourth_order:
+        w2 = sample_word(fourth_order[key])  # Enhancement: Fourth-order transitions
+      else:
+        break  # Stop if no transition found
+
+      if w2 == 'END':
+        break
+
+      sentence.append(w2)
+      w0, w1 = w1, w2
+
+    print(' '.join(sentence))
+
+# Generate poetry with 6 lines (Enhancement: Dynamic Line Count)
+generate(n_lines=6)
