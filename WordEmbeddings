@@ -1,0 +1,81 @@
+# Slower but always guaranteed to work
+!wget -nc https://archive.org/download/google-news-vectors-negative-300.bin_202311/GoogleNews-vectors-negative300.bin.gz
+
+# You are better off just downloading this from the source
+# https://drive.google.com/file/d/0B7XkCwpI5KDYNlNUTTlSS21pQmM/edit?usp=sharing
+# https://code.google.com/archive/p/word2vec/
+
+!gunzip GoogleNews-vectors-negative300.bin.gz # The from gensim.models import KeyedVectors statement is used to load
+#and work with pre-trained word embeddings in Gensim, such as Word2Vec, FastText, or GloVe.
+
+!pip install gensim
+
+!pip uninstall numpy -y
+!pip install numpy gensim --upgrade
+
+!pip uninstall numpy gensim -y
+
+!pip install --no-cache-dir numpy gensim
+
+import os
+os.kill(os.getpid(), 9)
+
+from gensim.models import KeyedVectors
+
+"""The below code loads pre-trained Word2Vec word embeddings from the Google News dataset using Gensim's KeyedVectors. The load_word2vec_format function is specifically designed to read word vector models trained using Google's Word2Vec format. The file 'GoogleNews-vectors-negative300.bin' contains 300-dimensional word vectors trained on Google News data, capturing semantic relationships between words. The binary=True argument specifies that the file is in binary format, ensuring efficient loading. Once loaded, the word_vectors object allows performing word similarity tasks, vector arithmetic, and retrieving embeddings for words."""
+
+word_vectors = KeyedVectors.load_word2vec_format(
+  'GoogleNews-vectors-negative300.bin',
+  binary=True
+)
+
+def find_analogies(w1, w2, w3):
+  # w1 - w2 = ? - w3
+  # e.g. king - man = ? - woman
+  #      ? = +king +woman -man
+  r = word_vectors.most_similar(positive=[w1, w3], negative=[w2])
+  print("%s - %s = %s - %s" % (w1, w2, r[0][0], w3))
+
+# The given function find_analogies uses word vector arithmetic to find an analogy
+# between words based on their semantic relationships. It leverages pre-trained Word2Vec embeddings
+# to determine the most similar word that completes the analogy.
+
+find_analogies('king', 'man', 'woman')
+# The model computes the closest word vector to the sum of king and woman, while subtracting man.
+# The function finds that "queen" is the best fit for ?, leading to the analogy
+
+find_analogies('france', 'paris', 'london')
+
+find_analogies('france', 'paris', 'rome')
+# The model computes the closest word vector to the sum of france and rome, while subtracting paris.
+# The function finds that "italy" is the best fit for ?, leading to the analogy
+
+find_analogies('paris', 'france', 'italy')
+
+find_analogies('france', 'french', 'english')
+
+find_analogies('december', 'november', 'june')
+
+find_analogies('miami', 'florida', 'texas')
+
+find_analogies('einstein', 'scientist', 'painter')
+
+find_analogies('man', 'woman', 'she')
+
+find_analogies('man', 'woman', 'aunt')
+
+"""The function nearest_neighbors(w) finds and prints the words that are most similar to the given word w based on the word embeddings stored in word_vectors. It uses the most_similar() method from Gensim's KeyedVectors, which returns a list of words with their similarity scores. The function first prints the given word and then iterates over the list of similar words, printing each one."""
+
+def nearest_neighbors(w):
+  r = word_vectors.most_similar(positive=[w])
+  print("neighbors of: %s" % w)
+  for word, score in r:
+    print("\t%s" % word)
+
+nearest_neighbors('king') # Finds the words that are more related to the word "king"
+
+nearest_neighbors('france')# Finds the words that are more related to the word "france"
+
+nearest_neighbors('japan')
+
+nearest_neighbors('nephew')
