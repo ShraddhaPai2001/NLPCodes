@@ -1,0 +1,184 @@
+import numpy as np
+import pandas as pd
+import textwrap
+import nltk
+from nltk import word_tokenize
+from nltk.tokenize.treebank import TreebankWordDetokenizer
+
+nltk.download('punkt_tab')
+
+nltk.download('punkt')
+
+# Load dataset (BBC text classification dataset)
+df = pd.read_csv('bbc_text_cls.csv')
+
+# Display first few rows
+df.head()
+
+# Extract unique labels from the dataset
+labels = set(df['labels'])
+labels
+
+# Pick a category to filter data
+label = 'business'
+
+# Filter texts belonging to the selected label
+texts = df[df['labels'] == label]['text']
+texts.head()
+
+# Dictionary to store probability distributions of word replacements
+probs = {}  # key: (previous_word, next_word), value: {middle_word: count}
+
+# Compute counts of middle words occurring between word pairs
+for doc in texts:
+  lines = doc.split("\n")
+  for line in lines:
+    tokens = word_tokenize(line)
+    for i in range(len(tokens) - 2):
+      t_0 = tokens[i]
+      t_1 = tokens[i + 1]
+      t_2 = tokens[i + 2]
+      key = (t_0, t_2)
+      if key not in probs:
+        probs[key] = {}
+
+      # add count for middle token
+      if t_1 not in probs[key]:
+        probs[key][t_1] = 1
+      else:
+        probs[key][t_1] += 1
+
+# normalize probabilities key is surrounding word and d dict
+for key, d in probs.items():
+  # d should represent a distribution
+  total = sum(d.values())
+  #k is middle word v is value
+  for k, v in d.items():
+    d[k] = v / total
+
+probs # Dictionary storing transition probabilities
+
+texts.iloc[0].split("\n")
+
+"""output[] empty list to store each spunned paragraph"""
+
+# Function to generate a spun version of a document
+def spin_document(doc):
+  # split the document into lines (paragraphs)
+  lines = doc.split("\n")
+  output = []
+  for line in lines:
+    if line:
+      new_line = spin_line(line)
+    else:
+      new_line = line
+    output.append(new_line)
+  return "\n".join(output)
+
+# Initialize detokenizer to reconstruct sentences from tokens
+detokenizer = TreebankWordDetokenizer()
+
+texts.iloc[0].split("\n")[4]
+
+detokenizer.detokenize(word_tokenize(texts.iloc[0].split("\n")[2]))
+
+# Function to sample a word based on probability distribution
+def sample_word(d):
+  p0 = np.random.random()
+  cumulative = 0
+  for t, p in d.items():
+    cumulative += p
+    if p0 < cumulative:
+      return t
+  assert(False) # should never get here
+
+# Function to spin a line by replacing middle words based on probabilities
+def spin_line(line):
+  tokens = word_tokenize(line)
+  i = 0
+  output = [tokens[0]]
+  while i < (len(tokens) - 2):
+    t_0 = tokens[i]
+    t_1 = tokens[i + 1]
+    t_2 = tokens[i + 2]
+    key = (t_0, t_2)
+    p_dist = probs[key]
+    if len(p_dist) > 1 and np.random.random() < 0.3:
+      # let's replace the middle word
+      middle = sample_word(p_dist)
+      output.append(t_1)
+      output.append("<" + middle + ">")
+      output.append(t_2)
+
+      # we won't replace the 3rd token since the middle
+      # token was dependent on it
+      # instead, skip ahead 2 steps
+      i += 2
+    else:
+      # we won't replace this middle word
+      output.append(t_1)
+      i += 1
+  # append the final token - only if there was no replacement
+  if i == len(tokens) - 2:
+    output.append(tokens[-1])
+  return detokenizer.detokenize(output)
+
+np.random.seed(1234)
+
+# Select a random document to spin
+i = np.random.choice(texts.shape[0])
+doc = texts.iloc[i]
+new_doc = spin_document(doc)
+
+# Print the spun document with formatted text
+print(textwrap.fill(new_doc, replace_whitespace=False, fix_sentence_endings=True))
+
+"""
+
+---
+
+Extra Enhancements
+
+---
+
+"""
+
+# Function to save computed probabilities to avoid recomputation
+import pickle
+
+def save_probs(filename='probs.pkl'):
+    with open(filename, 'wb') as f:
+        pickle.dump(probs, f)
+
+def load_probs(filename='probs.pkl'):
+    global probs
+    with open(filename, 'rb') as f:
+        probs = pickle.load(f)
+
+# Allow controlling the probability of word replacement dynamically
+def spin_line_custom(line, replace_prob=0.3):
+    tokens = word_tokenize(line)
+    i = 0
+    output = [tokens[0]]
+    while i < (len(tokens) - 2):
+        t_0 = tokens[i]
+        t_1 = tokens[i + 1]
+        t_2 = tokens[i + 2]
+        key = (t_0, t_2)
+        if key in probs:
+            p_dist = probs[key]
+            if len(p_dist) > 1 and np.random.random() < replace_prob:  # Custom probability
+                middle = sample_word(p_dist)
+                output.append("<" + middle + ">")
+                output.append(t_2)
+                i += 2
+                continue
+        output.append(t_1)
+        i += 1
+    if i == len(tokens) - 2:
+        output.append(tokens[-1])
+    return detokenizer.detokenize(output)
+
+# Example usage with custom probability
+doc_custom = spin_document(doc)
+print(textwrap.fill(doc_custom, replace_whitespace=False, fix_sentence_endings=True))
